@@ -1,0 +1,457 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Waste EPR Management & Recycling Target Calculator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Top Header Bar -->
+    <header class="app-header">
+        <div class="container header-container">
+            <div class="header-branding">
+                <div class="logo-icon">🌱</div>
+                <div>
+                    <h1>E-Waste EPR Management System</h1>
+                    <p class="subtitle">Calculate EPR Targets • Registration Fees • Compliance Status</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="btnPrint" class="btn btn-secondary" onclick="window.print()">
+                    🖨️ Print Report
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container main-content">
+        <!-- Academic Demo Notice Banner -->
+        <div class="alert alert-info">
+            <span class="alert-icon">ℹ️</span>
+            <div>
+                <strong>Academic Demonstration:</strong> Note: The company quantities shown are sample/demo values for academic demonstration and are not actual company-reported figures.
+            </div>
+        </div>
+
+        <!-- Global Financial Year Controller & Filter -->
+        <div class="fy-toolbar">
+            <div class="fy-toolbar-left">
+                <span class="fy-label">📅 <strong>Active Financial Year:</strong></span>
+                <select id="globalFySelect" class="form-control select-inline">
+                    {% for fy in financial_years %}
+                    <option value="{{ fy }}" {% if fy == default_fy %}selected{% endif %}>{{ fy }} (EPR Target: {{ 60 if '2023' in fy or '2024' in fy else (70 if '2025' in fy or '2026' in fy else 80) }}%)</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="fy-toolbar-right">
+                <span class="badge badge-neutral">Based on India's E-Waste Rules, 2022</span>
+            </div>
+        </div>
+
+        <!-- Dashboard Stat Cards (4 Cards) -->
+        <section class="dashboard-cards">
+            <!-- Card 1: Total Companies -->
+            <div class="stat-card">
+                <div class="stat-icon-wrapper icon-blue">🏢</div>
+                <div class="stat-details">
+                    <span class="stat-label">Total Companies</span>
+                    <h2 class="stat-value" id="cardTotalCompanies">{{ summary.total_companies }}</h2>
+                    <span class="stat-subtext">Sample Industry Dataset</span>
+                </div>
+            </div>
+
+            <!-- Card 2: Total Annual E-Waste -->
+            <div class="stat-card">
+                <div class="stat-icon-wrapper icon-amber">📦</div>
+                <div class="stat-details">
+                    <span class="stat-label">Total Annual E-Waste</span>
+                    <h2 class="stat-value" id="cardTotalWaste">{{ summary.total_annual_waste }} <small>MT</small></h2>
+                    <span class="stat-subtext">Sum of 5 Demo Entities</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Total EPR Target -->
+            <div class="stat-card">
+                <div class="stat-icon-wrapper icon-green">🎯</div>
+                <div class="stat-details">
+                    <span class="stat-label">Total EPR Target</span>
+                    <h2 class="stat-value" id="cardTotalTarget">{{ summary.total_epr_target }} <small>MT</small></h2>
+                    <span class="stat-subtext" id="cardTargetFy">FY {{ summary.financial_year }}</span>
+                </div>
+            </div>
+
+            <!-- Card 4: Compliant Companies -->
+            <div class="stat-card">
+                <div class="stat-icon-wrapper icon-emerald">✅</div>
+                <div class="stat-details">
+                    <span class="stat-label">Compliant Companies</span>
+                    <h2 class="stat-value" id="cardCompliantCount">{{ summary.compliant_count }} / {{ summary.total_companies }}</h2>
+                    <span class="stat-subtext" id="cardComplianceSub">Recycled ≥ EPR Target</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Two-Column Layout: Calculator & Result/Visuals -->
+        <div class="grid-2col">
+            <!-- Calculator Section -->
+            <section class="card calculator-card" id="calculatorSection">
+                <div class="card-header">
+                    <h2>♻️ EPR Target Calculator</h2>
+                    <p class="text-muted">Register an entity or select a demo company to calculate targets and fees.</p>
+                </div>
+
+                <div class="card-body">
+                    <!-- Quick Load Demo Company Preset -->
+                    <div class="form-group preset-group">
+                        <label for="demoCompanySelect">⚡ <strong>Quick Preset (Load Sample Company):</strong></label>
+                        <div class="preset-controls">
+                            <select id="demoCompanySelect" class="form-control">
+                                <option value="">-- Choose a Sample Company to Auto-Fill --</option>
+                                {% for comp in sample_companies %}
+                                <option value="{{ comp.id }}" data-name="{{ comp.name }}" data-type="{{ comp.type }}" data-waste="{{ comp.annual_waste }}" data-recycled="{{ comp.actual_recycled }}">
+                                    {{ comp.name }} ({{ comp.type }} • {{ comp.annual_waste }} MT)
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" id="btnLoadSample" class="btn btn-secondary">
+                                Load Sample Data
+                            </button>
+                        </div>
+                    </div>
+
+                    <hr class="divider">
+
+                    <!-- Form for EPR Target Calculation -->
+                    <form id="eprForm" novalidate>
+                        <!-- Company Name -->
+                        <div class="form-group">
+                            <label for="companyName">Company Name <span class="required">*</span></label>
+                            <input type="text" id="companyName" name="company_name" class="form-control" placeholder="e.g., Kaynes Technology" required>
+                            <span class="error-msg" id="errCompanyName"></span>
+                        </div>
+
+                        <!-- Entity Type -->
+                        <div class="form-group">
+                            <label for="entityType">Entity Type <span class="required">*</span></label>
+                            <select id="entityType" name="entity_type" class="form-control" required>
+                                <option value="">-- Select Entity Type --</option>
+                                {% for type in entity_types %}
+                                <option value="{{ type }}">{{ type }}</option>
+                                {% endfor %}
+                            </select>
+                            <span class="error-msg" id="errEntityType"></span>
+                        </div>
+
+                        <!-- 2 Numerical Inputs side-by-side -->
+                        <div class="form-row">
+                            <div class="form-group col-half">
+                                <label for="annualWaste">Annual E-Waste (MT) <span class="required">*</span></label>
+                                <input type="number" id="annualWaste" name="annual_waste" class="form-control" placeholder="e.g., 80" step="any" min="0" required>
+                                <span class="form-hint">Generated or Handled (Metric Tonnes)</span>
+                                <span class="error-msg" id="errAnnualWaste"></span>
+                            </div>
+
+                            <div class="form-group col-half">
+                                <label for="actualRecycled">Actual Recycled (MT) <span class="required">*</span></label>
+                                <input type="number" id="actualRecycled" name="actual_recycled" class="form-control" placeholder="e.g., 60" step="any" min="0" required>
+                                <span class="form-hint">Quantity Recycled (Metric Tonnes)</span>
+                                <span class="error-msg" id="errActualRecycled"></span>
+                            </div>
+                        </div>
+
+                        <!-- Financial Year -->
+                        <div class="form-group">
+                            <label for="financialYear">Financial Year <span class="required">*</span></label>
+                            <select id="financialYear" name="financial_year" class="form-control" required>
+                                {% for fy in financial_years %}
+                                <option value="{{ fy }}" {% if fy == default_fy %}selected{% endif %}>{{ fy }}</option>
+                                {% endfor %}
+                            </select>
+                            <span class="error-msg" id="errFinancialYear"></span>
+                        </div>
+
+                        <!-- Form Action Buttons -->
+                        <div class="form-actions">
+                            <button type="submit" id="btnCalculate" class="btn btn-primary">
+                                ⚡ Calculate EPR Target
+                            </button>
+                            <button type="button" id="btnReset" class="btn btn-outline">
+                                🔄 Reset
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Result Card / Placeholder Column -->
+            <section class="card result-card" id="resultCard">
+                <div class="card-header result-header">
+                    <h2>📊 Calculation Result</h2>
+                    <span id="resultComplianceBadge" class="badge badge-success">COMPLIANT</span>
+                </div>
+
+                <div class="card-body" id="resultBody">
+                    <div class="result-details-grid">
+                        <div class="result-item">
+                            <span class="result-item-label">Company Name:</span>
+                            <strong class="result-item-val" id="resCompanyName">Kaynes Technology</strong>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-item-label">Entity Type:</span>
+                            <strong class="result-item-val" id="resEntityType">Producer</strong>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-item-label">Annual E-Waste:</span>
+                            <strong class="result-item-val" id="resAnnualWaste">80 MT</strong>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-item-label">Financial Year:</span>
+                            <strong class="result-item-val" id="resFinancialYear">2024-25</strong>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-item-label">Target Percentage:</span>
+                            <strong class="result-item-val highlight-green" id="resTargetPct">60%</strong>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-item-label">EPR Target:</span>
+                            <strong class="result-item-val highlight-green" id="resEprTarget">48 MT</strong>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-item-label">Actual Recycled:</span>
+                            <strong class="result-item-val" id="resActualRecycled">60 MT</strong>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-item-label">Registration Fee:</span>
+                            <strong class="result-item-val highlight-fee" id="resFee">₹2,500</strong>
+                        </div>
+                    </div>
+
+                    <!-- Step-by-Step Formula Callout -->
+                    <div class="formula-box">
+                        <div class="formula-title">📐 Calculation Formula Breakdown:</div>
+                        <div class="formula-expression">
+                            <code>Annual E-Waste × EPR Target % = EPR Target</code>
+                        </div>
+                        <div class="formula-applied" id="resFormulaApplied">
+                            80 MT × 60% = 48 MT
+                        </div>
+                    </div>
+
+                    <!-- Recycling Difference Callout -->
+                    <div class="difference-box" id="resDifferenceBox">
+                        <div class="diff-title">⚖️ Recycling Difference:</div>
+                        <div class="diff-formula">
+                            <code>Actual Recycled − EPR Target = Difference</code>
+                        </div>
+                        <div class="diff-val" id="resDifferenceText">
+                            60 MT − 48 MT = <strong>+12 MT (Surplus)</strong>
+                        </div>
+                        <div class="diff-conclusion" id="resDifferenceConclusion">
+                            Since Actual Recycled (60 MT) ≥ EPR Target (48 MT), the entity is <strong>COMPLIANT</strong>.
+                        </div>
+                    </div>
+
+                    <!-- Fee Slab Detail -->
+                    <div class="fee-slab-notice" id="resFeeSlabNotice">
+                        Applicable Fee Slab: <strong>Target &lt; 50 MT &rarr; ₹2,500</strong>
+                    </div>
+                </div>
+
+                <div class="card-empty-placeholder" id="resultPlaceholder" style="display: none;">
+                    <div class="placeholder-icon">🧮</div>
+                    <h3>No Calculation Done Yet</h3>
+                    <p>Fill out the form on the left or choose a demo company preset, then click <strong>"Calculate EPR Target"</strong> to view results.</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- Visual Analytics Chart Section (Zero API, 100% Pure JS/Canvas) -->
+        <section class="card chart-section">
+            <div class="card-header chart-header-row">
+                <div>
+                    <h2>📈 Company vs Annual E-Waste Comparison</h2>
+                    <p class="text-muted">Visual comparison of Annual E-Waste, EPR Target, and Actual Recycled across the five sample companies.</p>
+                </div>
+                <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-box color-waste"></span> Annual E-Waste</span>
+                    <span class="legend-item"><span class="legend-box color-target"></span> EPR Target</span>
+                    <span class="legend-item"><span class="legend-box color-recycled"></span> Actual Recycled</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="canvas-container">
+                    <canvas id="ewasteChart" width="900" height="320"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Five Sample Companies Comparison Table -->
+        <section class="card table-section">
+            <div class="card-header table-header-row">
+                <div>
+                    <h2>🏢 Five Sample Companies Compliance Table</h2>
+                    <p class="text-muted">Overview of all 5 demonstration entities calculated for the active financial year.</p>
+                </div>
+                <div class="table-actions">
+                    <button type="button" id="btnReloadTable" class="btn btn-secondary btn-sm">
+                        🔄 Refresh Table
+                    </button>
+                    <button type="button" id="btnLoadAllSamples" class="btn btn-outline btn-sm">
+                        📋 Load Sample Companies
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="data-table" id="sampleCompaniesTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Company</th>
+                                <th>Entity Type</th>
+                                <th>Annual E-Waste</th>
+                                <th>Financial Year</th>
+                                <th>EPR %</th>
+                                <th>EPR Target</th>
+                                <th>Actual Recycled</th>
+                                <th>Registration Fee</th>
+                                <th>Compliance</th>
+                                <th class="no-print">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="companyTableBody">
+                            {% for comp in summary.companies %}
+                            <tr>
+                                <td>{{ comp.id }}</td>
+                                <td><strong>{{ comp.name }}</strong></td>
+                                <td><span class="badge badge-neutral">{{ comp.type }}</span></td>
+                                <td>{{ comp.annual_waste }} MT</td>
+                                <td>{{ comp.financial_year }}</td>
+                                <td>{{ comp.target_percentage }}%</td>
+                                <td><strong>{{ comp.epr_target }} MT</strong></td>
+                                <td>{{ comp.actual_recycled }} MT</td>
+                                <td><code>{{ comp.registration_fee_formatted }}</code></td>
+                                <td>
+                                    {% if comp.is_compliant %}
+                                    <span class="badge badge-success">🌱 COMPLIANT</span>
+                                    {% else %}
+                                    <span class="badge badge-danger">⚠️ NON-COMPLIANT</span>
+                                    {% endif %}
+                                </td>
+                                <td class="no-print">
+                                    <button class="btn btn-xs btn-outline btn-load-row" 
+                                            data-name="{{ comp.name }}" 
+                                            data-type="{{ comp.type }}" 
+                                            data-waste="{{ comp.annual_waste }}" 
+                                            data-recycled="{{ comp.actual_recycled }}" 
+                                            data-fy="{{ comp.financial_year }}">
+                                        Load
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Calculation Rules & Explanation Section -->
+        <section class="card explanation-section">
+            <div class="card-header">
+                <h2>💡 How is EPR Target calculated?</h2>
+                <p class="text-muted">Standard Operating Procedure per E-Waste (Management) Rules, 2022</p>
+            </div>
+            <div class="card-body">
+                <div class="steps-grid">
+                    <!-- Step 1 -->
+                    <div class="step-card">
+                        <div class="step-number">1</div>
+                        <h3>Select Financial Year</h3>
+                        <p>Identify the applicable financial year to determine the required target percentage mandated by the government rules.</p>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="step-card">
+                        <div class="step-number">2</div>
+                        <h3>Find EPR Percentage</h3>
+                        <p>Apply the statutory EPR rate:</p>
+                        <ul class="rule-list">
+                            <li>2023–24 &rarr; <strong>60%</strong></li>
+                            <li>2024–25 &rarr; <strong>60%</strong></li>
+                            <li>2025–26 &rarr; <strong>70%</strong></li>
+                            <li>2026–27 &rarr; <strong>70%</strong></li>
+                            <li>2027–28 onward &rarr; <strong>80%</strong></li>
+                        </ul>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="step-card">
+                        <div class="step-number">3</div>
+                        <h3>Compute Target (MT)</h3>
+                        <p>Multiply annual e-waste handled by the target percentage:</p>
+                        <div class="step-formula">
+                            <code>EPR Target = Annual E-Waste × Target % / 100</code>
+                        </div>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div class="step-card">
+                        <div class="step-number">4</div>
+                        <h3>Compare Recycled vs Target</h3>
+                        <p>Evaluate actual recycling achievements against the statutory target:</p>
+                        <div class="step-formula">
+                            <code>Difference = Actual Recycled − EPR Target</code>
+                        </div>
+                    </div>
+
+                    <!-- Step 5 -->
+                    <div class="step-card">
+                        <div class="step-number">5</div>
+                        <h3>Determine Compliance</h3>
+                        <p>If <strong>Actual Recycled &ge; EPR Target</strong>, mark as <span class="badge badge-success">COMPLIANT</span>. Otherwise, mark as <span class="badge badge-danger">NON-COMPLIANT</span>.</p>
+                    </div>
+
+                    <!-- Step 6 -->
+                    <div class="step-card">
+                        <div class="step-number">6</div>
+                        <h3>Lookup Registration Fee</h3>
+                        <p>Find the one-time registration fee slab based on EPR Target quantity:</p>
+                        <ul class="rule-list">
+                            <li>&lt; 50 MT &rarr; <strong>₹2,500</strong></li>
+                            <li>50 to &lt; 100 MT &rarr; <strong>₹7,500</strong></li>
+                            <li>100 to &lt; 1,000 MT &rarr; <strong>₹1,50,000</strong></li>
+                            <li>1,000 to &lt; 5,000 MT &rarr; <strong>₹10,00,000</strong></li>
+                            <li>&ge; 5,000 MT &rarr; <strong>₹15,00,000</strong></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer with Academic Legal Disclaimer -->
+    <footer class="app-footer">
+        <div class="container footer-container">
+            <div class="footer-left">
+                <p><strong>🌱 E-Waste EPR Management & Recycling Target Calculator</strong></p>
+                <p class="footer-disclaimer">
+                    "This application is an academic demonstration based on the rules and values specified in the provided college assignment. It is not a legal compliance tool and the sample company quantities are fictional/demo values."
+                </p>
+            </div>
+            <div class="footer-right">
+                <p class="footer-meta">Third-Year Computer Engineering Mini-Project</p>
+                <p class="footer-submeta">100% Free • Zero API Keys • Python Flask</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Initial Data Injected Safely for Frontend JS -->
+    <script>
+        window.INITIAL_SUMMARY = {{ summary | tojson }};
+        window.SAMPLE_COMPANIES = {{ sample_companies | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
